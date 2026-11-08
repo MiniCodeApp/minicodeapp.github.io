@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MiniCode — The Fast, Private Code Editor</title>
+<style>
+  :root {
+    --face:   #c0c0c0;
+    --light:  #dfdfdf;
+    --white:  #ffffff;
+    --shadow: #808080;
+    --dark:   #000000;
+    --navy:   #000080;
+    --teal:   #008080;
+    --green:  #008000;
+    --maroon: #800000;
+    --ui-font: "MS Sans Serif", "Microsoft Sans Serif", Tahoma, sans-serif;
+    --mono-font: Consolas, "Courier New", monospace;
+  }
+
+  [data-theme="dark"] {
+    --face:   #2d2d2d; 
+    --light:  #555555; 
+    --white:  #4a4a4a; 
+    --shadow: #111111; 
+    --dark:   #000000;
+    --navy:   #1a1a5a; 
+    --green:  #4caf50;
+    --maroon: #a83232;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+
+  body {
+    background-color: var(--face);
+    font-family: var(--ui-font);
+    font-size: 13px;
+    color: #000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    -webkit-font-smoothing: none;
+    transition: background-color 0.3s, color 0.3s;
+    position: relative;
+  }
+
+  [data-theme="dark"] body { color: #e0e0e0; }
+
+  /* ---------- Highly Animated Background ---------- */
+  .bg-container {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  /* The Grid */
+  .bg-grid {
+    position: absolute;
+    top: -32px; left: -32px; right: -32px; bottom: -32px;
+    background-image: 
+      linear-gradient(to right, var(--shadow) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--shadow) 1px, transparent 1px);
+    background-size: 64px 64px;
+    opacity: 0.1;
+    animation: panGrid 20s linear infinite;
+  }
+
+  /* CRT Scanlines */
+  .bg-scanlines {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(
+      to bottom,
+      rgba(255,255,255,0) 50%,
+      rgba(0,0,0,0.05) 50%
+    );
+    background-size: 100% 4px;
+    z-index: 1;
+    opacity: 0.6;
+  }
+
+  /* Floating Symbols */
+  .floating-symbol {
+    position: absolute;
+    font-family: var(--mono-font);
+    font-weight: bold;
+    color: var(--shadow);
+    opacity: 0.15;
+    animation: floatUp linear infinite;
+    user-select: none;
+  }
+
+  @keyframes panGrid {
+    from { transform: translateY(0); }
+    to { transform: translateY(64px); }
+  }
+
+  @keyframes floatUp {
+    0% { transform: translateY(110vh) rotate(0deg); opacity: 0; }
+    10% { opacity: 0.2; }
+    90% { opacity: 0.2; }
+    100% { transform: translateY(-10vh) rotate(360deg); opacity: 0; }
+  }
+
+  /* ---------- Core Animations ---------- */
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  @keyframes pulseGlow {
+    0% { box-shadow: 0 0 0 0 rgba(0, 0, 128, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(0, 0, 128, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(0, 0, 128, 0); }
+  }
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+  @keyframes zoomIn {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .reveal.active {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ---------- Title Bar & Banner ---------- */
+  .title-bar {
+    background: linear-gradient(90deg, var(--navy) 0%, #1084d0 100%);
+    color: var(--white);
+    padding: 2px 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: bold;
+    height: 30px;
+    flex: 0 0 auto;
+    z-index: 10;
+  }
+  .theme-btn {
+    font-family: var(--ui-font);
+    font-size: 11px;
+    font-weight: bold;
+    padding: 2px 8px;
+    background: var(--face);
+    color: var(--dark);
+    border: 1px solid;
+    border-color: var(--white) var(--dark) var(--dark) var(--white);
+    box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  [data-theme="dark"] .theme-btn { color: #fff; }
+  .theme-btn:active { border-color: var(--dark) var(--white) var(--white) var(--dark); box-shadow: inset 1px 1px var(--shadow); }
+
+  .promo-banner {
+    background: var(--navy);
+    color: #ffff00;
+    font-weight: bold;
+    font-size: 12px;
+    letter-spacing: .5px;
+    overflow: hidden;
+    flex: 0 0 auto;
+    border-top: 1px solid #4a4aff;
+    border-bottom: 1px solid #000040;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    z-index: 10;
+  }
+  .marquee-track { display: flex; width: max-content; white-space: nowrap; animation: marquee 25s linear infinite; }
+  .marquee-track span { padding-right: 70px; }
+
+  /* ---------- Layout & Hero ---------- */
+  .main-content { flex: 1 1 auto; padding: 40px 20px 60px; overflow-y: auto; background: transparent; scroll-behavior: smooth; position: relative; z-index: 2; }
+  .container { max-width: 1000px; margin: 0 auto; }
+
+  .hero { text-align: center; margin-bottom: 40px; }
+  .hero-logo { width: 128px; height: 128px; image-rendering: pixelated; margin-bottom: 20px; animation: float 4s ease-in-out infinite; }
+  .hero h1 { font-size: 42px; margin-bottom: 12px; letter-spacing: 1px; text-shadow: 2px 2px 0 var(--white), 3px 3px 0 var(--shadow); }
+  [data-theme="dark"] .hero h1 { text-shadow: 2px 2px 0 var(--dark), 3px 3px 0 var(--shadow); }
+  .hero .tagline { font-size: 18px; font-weight: bold; color: var(--navy); margin-bottom: 12px; }
+  [data-theme="dark"] .hero .tagline { color: #6ea8ff; }
+  .hero .sub { font-size: 14px; color: #222; line-height: 1.6; max-width: 620px; margin: 0 auto 26px; }
+  [data-theme="dark"] .hero .sub { color: #b0b0b0; }
+
+  .badge-row { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: bold;
+    letter-spacing: .6px; padding: 3px 9px; background: var(--face); border: 1px solid;
+    border-color: var(--white) var(--dark) var(--dark) var(--white);
+    box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow);
+  }
+  .badge-free { color: var(--navy); }
+  [data-theme="dark"] .badge-free { color: #6ea8ff; }
+  .dot { width: 8px; height: 8px; background: #00ff00; border: 1px solid #008000; border-radius: 50%; animation: pulseGlow 2s infinite; }
+
+  /* ---------- Buttons & Stats ---------- */
+  .download-group { display: flex; justify-content: center; gap: 15px; margin-bottom: 16px; flex-wrap: wrap; }
+  .btn-download {
+    position: relative; display: inline-flex; align-items: center; justify-content: flex-start;
+    gap: 12px; padding: 10px 20px; font-size: 14px; font-weight: bold; text-decoration: none;
+    color: var(--dark); min-width: 200px; font-family: var(--ui-font); background: var(--face);
+    border: 2px solid; border-color: var(--white) var(--dark) var(--dark) var(--white);
+    box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow);
+    cursor: pointer; transition: transform 0.15s ease, background 0.1s;
+  }
+  [data-theme="dark"] .btn-download { color: #fff; }
+  .btn-download:hover { background: var(--light); transform: scale(1.02); }
+  .btn-download:active { border-color: var(--dark) var(--white) var(--white) var(--dark); box-shadow: inset 1px 1px var(--shadow); transform: scale(0.98); }
+  .btn-download svg { width: 36px; height: 36px; image-rendering: pixelated; flex-shrink: 0; }
+  
+  .btn-download.locked {
+    opacity: 0.6; cursor: not-allowed; pointer-events: none; background: var(--face);
+    box-shadow: inset 1px 1px var(--dark), inset -1px -1px var(--light);
+    border-color: var(--shadow) var(--white) var(--white) var(--shadow);
+  }
+  .btn-download.locked:hover { transform: none; background: var(--face); }
+  .btn-download.locked svg { filter: grayscale(100%) opacity(0.5); }
+
+  .ribbon {
+    position: absolute; top: -10px; right: -8px; background: var(--navy); color: #fff;
+    font-size: 9px; font-weight: bold; letter-spacing: .5px; padding: 2px 6px;
+    border: 1px solid #000040; box-shadow: 1px 1px 0 rgba(0,0,0,.35);
+  }
+  .ribbon-soon { background: var(--maroon); border-color: #400000; }
+  .ribbon-soon::after { content: "SOON"; }
+
+  .microcopy { font-size: 11px; color: #444; margin-bottom: 8px; }
+  [data-theme="dark"] .microcopy { color: #aaa; }
+  .trust-line { display: flex; justify-content: center; gap: 18px; flex-wrap: wrap; font-size: 11px; color: #333; margin-bottom: 36px; }
+  [data-theme="dark"] .trust-line { color: #aaa; }
+  .trust-line span::before { content: "✓ "; color: var(--green); font-weight: bold; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 50px; }
+  .stat {
+    text-align: center; padding: 16px 8px; background: var(--face); border: 1px solid;
+    border-color: var(--white) var(--dark) var(--dark) var(--white);
+    box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow);
+    transition: transform 0.2s ease;
+  }
+  .stat:hover { transform: translateY(-3px); }
+  .stat .num { font-size: 22px; font-weight: bold; color: var(--navy); display: block; }
+  [data-theme="dark"] .stat .num { color: #6ea8ff; }
+  .stat .lbl { font-size: 11px; color: #444; margin-top: 4px; }
+  [data-theme="dark"] .stat .lbl { color: #aaa; }
+
+  /* ---------- Sections & Features Base ---------- */
+  .section-title {
+    font-size: 18px; font-weight: bold; margin-bottom: 24px;
+    border-bottom: 2px solid var(--shadow); padding-bottom: 8px; color: var(--navy);
+  }
+  [data-theme="dark"] .section-title { color: #6ea8ff; }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 60px; }
+  .feature-card {
+    display: flex; flex-direction: column; padding: 24px; background: var(--face);
+    border: 1px solid; border-color: var(--white) var(--dark) var(--dark) var(--white);
+    box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow), 1px 1px 0 rgba(0,0,0,.15);
+    transition: box-shadow 0.2s ease; position: relative; overflow: hidden;
+  }
+  .feature-card:hover { box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow), 4px 4px 0 rgba(0,0,0,.25); }
+
+  .feature-icon {
+    width: 48px; height: 48px; background: var(--face); border: 1px solid;
+    border-color: var(--white) var(--dark) var(--dark) var(--white);
+    box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow);
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px;
+    position: relative; z-index: 5; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .feature-card:hover .feature-icon { transform: scale(1.15) rotate(5deg); background: var(--white); }
+  [data-theme="dark"] .feature-card:hover .feature-icon { background: var(--light); }
+  .feature-icon svg { width: 28px; height: 28px; }
+
+  .feature-card h3 { font-size: 15px; margin-bottom: 8px; color: var(--navy); letter-spacing: .3px; position: relative; z-index: 5; }
+  [data-theme="dark"] .feature-card h3 { color: #6ea8ff; }
+  .feature-card p { font-size: 13px; color: #333; line-height: 1.6; position: relative; z-index: 5; }
+  [data-theme="dark"] .feature-card p { color: #ccc; }
+
+  @keyframes iconPop { 0% { transform: scale(0.5) rotate(-15deg); opacity: 0; } 70% { transform: scale(1.1) rotate(5deg); opacity: 1; } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
+  @keyframes slideUpText { 0% { transform: translateY(15px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+
+  .feature-card.active .feature-icon { animation: iconPop 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) both; }
+  .feature-card.active h3 { animation: slideUpText 0.6s 0.3s both; }
+  .feature-card.active p { animation: slideUpText 0.6s 0.4s both; }
+
+  /* --- Narrative Animations --- */
+  .lang-card { overflow: hidden; }
+  .code-snippet { position: absolute; font-family: var(--mono-font); font-size: 20px; font-weight: bold; color: var(--navy); opacity: 0; z-index: 15; pointer-events: none; }
+  .snippet-1 { top: 20%; left: 20%; }
+  .snippet-2 { top: 20%; right: 20%; color: var(--maroon); }
+  .snippet-3 { bottom: 20%; left: 40%; color: var(--teal); }
+  .lang-card.active .snippet-1 { animation: flyIn1 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+  .lang-card.active .snippet-2 { animation: flyIn2 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+  .lang-card.active .snippet-3 { animation: flyIn3 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+  @keyframes flyIn1 { 0% { transform: translate(-150px, -150px) rotate(-90deg) scale(3); opacity: 0; } 40% { opacity: 1; } 70% { transform: translate(0, 0) rotate(0) scale(1); opacity: 0; } 100% { opacity: 0; } }
+  @keyframes flyIn2 { 0% { transform: translate(150px, -150px) rotate(90deg) scale(3); opacity: 0; } 40% { opacity: 1; } 70% { transform: translate(0, 0) rotate(0) scale(1); opacity: 0; } 100% { opacity: 0; } }
+  @keyframes flyIn3 { 0% { transform: translate(0, 150px) rotate(180deg) scale(3); opacity: 0; } 40% { opacity: 1; } 70% { transform: translate(0, 0) rotate(0) scale(1); opacity: 0; } 100% { opacity: 0; } }
+  .lang-card.active { animation: lockFlash 1.5s ease forwards; }
+  @keyframes lockFlash { 0%, 50% { box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow); } 60% { box-shadow: inset 0 0 20px 5px var(--navy); } 100% { box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow); } }
+  .lang-card.active .feature-icon { animation-delay: 0.8s; }
+  .lang-card.active h3 { animation-delay: 1.0s; }
+  .lang-card.active p { animation-delay: 1.1s; }
+
+  .vault-card.active { animation: heavyShake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+  @keyframes heavyShake { 0%, 100% { transform: translateX(0); opacity: 1; } 10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); } 20%, 40%, 60%, 80% { transform: translateX(8px); } 15%, 85% { box-shadow: inset 0 0 0 4px #FFD700; } }
+  .vault-card.active .feature-icon { animation-delay: 0.3s; }
+  .vault-card.active h3 { animation-delay: 0.5s; }
+  .vault-card.active p { animation-delay: 0.6s; }
+
+  .split-overlay { position: absolute; top: 0; bottom: 0; width: 50%; background: var(--navy); opacity: 0; z-index: 10; pointer-events: none; }
+  .split-overlay.left { left: 0; transform: translateX(0); }
+  .split-overlay.right { right: 0; transform: translateX(0); }
+  .split-card.active { animation: revealBase 0.1s ease forwards; } 
+  @keyframes revealBase { to { opacity: 1; transform: translateY(0); } }
+  .split-card.active .split-overlay.left { animation: splitLeft 1.5s cubic-bezier(0.8, 0, 0.2, 1) forwards; }
+  .split-card.active .split-overlay.right { animation: splitRight 1.5s cubic-bezier(0.8, 0, 0.2, 1) forwards; }
+  @keyframes splitLeft { 0% { opacity: 0.9; transform: translateX(0); } 40% { opacity: 0.9; transform: translateX(-100%); } 100% { opacity: 0; transform: translateX(-100%); } }
+  @keyframes splitRight { 0% { opacity: 0.9; transform: translateX(0); } 40% { opacity: 0.9; transform: translateX(100%); } 100% { opacity: 0; transform: translateX(100%); } }
+  .split-card.active .feature-icon { animation-delay: 0.4s; }
+  .split-card.active h3 { animation-delay: 0.6s; }
+  .split-card.active p { animation-delay: 0.7s; }
+
+  .terminal-card { position: relative; }
+  .terminal-card.active { animation: revealBase 0.4s ease forwards; }
+  .terminal-card.active::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 6px; background: #00ff00; box-shadow: 0 0 20px 4px #00ff00; animation: laserScan 1s linear forwards; pointer-events: none; z-index: 10; }
+  @keyframes laserScan { 0% { top: 0; opacity: 1; } 90% { top: 100%; opacity: 1; } 100% { top: 100%; opacity: 0; } }
+
+  .feather-card { overflow: hidden; }
+  .heavy-block { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 60px; height: 40px; background: #444; border: 2px solid #222; z-index: 15; opacity: 0; }
+  .feather-icon { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); width: 40px; height: 40px; z-index: 15; opacity: 0; }
+  .feather-card.active .heavy-block { animation: heavyDrop 1.2s cubic-bezier(0.6, 0.04, 0.98, 0.335) forwards; }
+  .feather-card.active .feather-icon { animation: featherFloat 1.5s ease-out forwards; }
+  @keyframes heavyDrop { 0% { transform: translate(-50%, -300px); opacity: 1; } 50% { transform: translate(-50%, 0); opacity: 1; box-shadow: 0 10px 20px rgba(0,0,0,0.5); } 60% { transform: translate(-50%, -20px); opacity: 1; box-shadow: 0 5px 10px rgba(0,0,0,0.3); } 100% { transform: translate(-50%, 0); opacity: 0; } }
+  @keyframes featherFloat { 0%, 40% { transform: translate(-50%, 20px) rotate(0deg); opacity: 0; } 60% { transform: translate(-50%, 0) rotate(45deg); opacity: 1; } 100% { transform: translate(-50%, -80px) rotate(90deg); opacity: 0; } }
+  .feather-card.active { animation: revealBase 0.1s ease forwards; }
+  .feather-card.active .feature-icon { animation-delay: 0.8s; }
+  .feather-card.active h3 { animation-delay: 1.0s; }
+  .feather-card.active p { animation-delay: 1.1s; }
+
+  .private-card { overflow: hidden; }
+  .hacker-hook { position: absolute; top: 50%; right: -100px; width: 80px; height: 4px; background: var(--maroon); z-index: 15; opacity: 0; transform-origin: right center; }
+  .hacker-hook::before { content: ''; position: absolute; left: -10px; top: -8px; width: 16px; height: 20px; border: 4px solid var(--maroon); border-right: none; border-radius: 10px 0 0 10px; }
+  .shield-effect { position: absolute; top: 0; left: 0; right: 0; bottom: 0; box-shadow: inset 0 0 0 0 transparent; z-index: 14; pointer-events: none; }
+  .private-card.active { animation: revealBase 0.1s ease forwards; }
+  .private-card.active .hacker-hook { animation: hookAttack 1.4s ease-in forwards; }
+  .private-card.active .shield-effect { animation: shieldFlash 1.4s ease-in forwards; }
+  @keyframes hookAttack { 0% { right: -100px; opacity: 0; transform: rotate(0deg); } 40% { right: 20px; opacity: 1; transform: rotate(0deg); } 45% { right: 20px; opacity: 1; transform: rotate(15deg); filter: hue-rotate(90deg) brightness(2); } 55% { right: 20px; opacity: 1; transform: rotate(-30deg) scale(1.2); filter: hue-rotate(180deg) brightness(0.5); } 100% { right: 20px; opacity: 0; transform: rotate(90deg) scale(0); } }
+  @keyframes shieldFlash { 0%, 35% { box-shadow: inset 0 0 0 0 transparent; } 45% { box-shadow: inset 0 0 30px 10px var(--green), 0 0 20px 5px var(--green); } 60% { box-shadow: inset 0 0 10px 2px var(--green), 0 0 10px 2px var(--green); } 100% { box-shadow: inset 0 0 0 0 transparent; } }
+  .private-card.active .feature-icon { animation-delay: 0.8s; }
+  .private-card.active h3 { animation-delay: 1.0s; }
+  .private-card.active p { animation-delay: 1.1s; }
+
+  /* ---------- Gallery, Lightbox, FAQ, CTA, Footer ---------- */
+  .screenshot-gallery { margin-bottom: 60px; display: flex; flex-direction: column; gap: 20px; }
+  .screenshot-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .screenshot-box { padding: 6px; background: var(--face); border: 2px solid; border-color: var(--white) var(--dark) var(--dark) var(--white); box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow), 2px 2px 0 rgba(0,0,0,0.2); transition: transform 0.2s ease; display: flex; flex-direction: column; }
+  .screenshot-box:hover { transform: scale(1.01); }
+  .screenshot-box img { display: block; width: 100%; height: auto; border: 1px solid #000; cursor: zoom-in; transition: filter 0.2s; }
+  .screenshot-box img:hover { filter: brightness(1.1); }
+  .screenshot-caption { margin-top: 8px; padding: 8px; background: var(--face); border: 1px solid; border-color: var(--shadow) var(--white) var(--white) var(--shadow); box-shadow: inset 1px 1px var(--dark), inset -1px -1px var(--light); text-align: center; font-weight: bold; font-size: 13px; color: var(--navy); }
+  [data-theme="dark"] .screenshot-caption { color: #6ea8ff; }
+  .img-dark { display: none !important; }
+  [data-theme="dark"] .img-light { display: none !important; }
+  [data-theme="dark"] .img-dark { display: block !important; }
+  @media (max-width: 768px) { .screenshot-row { grid-template-columns: 1fr; } }
+
+  .lightbox { display: none; position: fixed; z-index: 1000; padding-top: 50px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.85); backdrop-filter: blur(4px); }
+  .lightbox-content { margin: auto; display: block; width: 95%; max-width: 1400px; border: 4px solid var(--face); box-shadow: 0 0 30px rgba(0,0,0,0.8); animation: zoomIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .lightbox-close { position: absolute; top: 15px; right: 35px; color: #fff; font-size: 40px; font-weight: bold; cursor: pointer; font-family: Arial, sans-serif; line-height: 1; }
+  .lightbox-close:hover { color: #bbb; }
+
+  .faq-item { background: var(--face); border: 1px solid; border-color: var(--white) var(--dark) var(--dark) var(--white); box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow); margin-bottom: 10px; transition: background 0.15s; }
+  .faq-item:hover { background: var(--light); }
+  .faq-item summary { cursor: pointer; padding: 12px 14px; font-weight: bold; font-size: 13px; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  .faq-item summary::-webkit-details-marker { display: none; }
+  .faq-item summary::after { content: "+"; font-family: var(--mono-font); font-size: 16px; color: var(--navy); transition: transform 0.2s; }
+  [data-theme="dark"] .faq-item summary::after { color: #6ea8ff; }
+  .faq-item[open] summary::after { content: "−"; transform: rotate(180deg); }
+  .faq-body { padding: 0 14px 14px; font-size: 13px; line-height: 1.7; color: #333; }
+  [data-theme="dark"] .faq-body { color: #ccc; }
+  .faq-body code { font-family: var(--mono-font); background: var(--white); border: 1px solid var(--shadow); padding: 0 4px; }
+  [data-theme="dark"] .faq-body code { background: #1a1a1a; border-color: #444; }
+
+  .final-cta { margin-top: 20px; padding: 40px 20px; text-align: center; background: var(--face); border: 1px solid; border-color: var(--white) var(--dark) var(--dark) var(--white); box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow), 4px 4px 0 rgba(0,0,0,.15); }
+  .final-cta h2 { font-size: 22px; color: var(--navy); margin-bottom: 12px; }
+  [data-theme="dark"] .final-cta h2 { color: #6ea8ff; }
+  .final-cta p { font-size: 13px; color: #333; margin-bottom: 24px; line-height: 1.6; }
+  [data-theme="dark"] .final-cta p { color: #ccc; }
+  .btn-primary-cta { min-width: 300px; justify-content: center; animation: pulseGlow 2.5s infinite; }
+
+  .status-bar { display: flex; gap: 2px; padding: 2px; background: var(--face); border-top: 1px solid var(--white); flex: 0 0 auto; z-index: 10; position: relative; }
+  .status-panel { padding: 2px 8px; font-size: 11px; border: 1px solid; border-color: var(--shadow) var(--white) var(--white) var(--shadow); }
+  .status-panel.flex-grow { flex: 1; }
+
+  ::-webkit-scrollbar { width: 16px; height: 16px; }
+  ::-webkit-scrollbar-track { background: var(--face); }
+  ::-webkit-scrollbar-thumb { background: var(--face); border: 1px solid; border-color: var(--white) var(--dark) var(--dark) var(--white); box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow); }
+  ::-webkit-scrollbar-button { display: block; width: 16px; height: 16px; background: var(--face); border: 1px solid; border-color: var(--white) var(--dark) var(--dark) var(--white); box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .marquee-track, .hero-logo, .bg-grid, .floating-symbol, .btn-primary-cta, .split-card.active .split-overlay,
+    .feature-card.active .feature-icon, .feature-card.active h3, .feature-card.active p,
+    .lang-card.active, .vault-card.active, .terminal-card.active::after, .feather-card.active, .private-card.active { animation: none !important; transform: none !important; opacity: 1 !important; }
+    .reveal { opacity: 1 !important; transform: none !important; }
+    .main-content { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- Animated Background -->
+  <div class="bg-container">
+    <div class="bg-grid"></div>
+    <div class="bg-scanlines"></div>
+  </div>
+
+  <div class="title-bar">
+    <span>MiniCode — Official Website</span>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <button id="theme-toggle" class="theme-btn">
+        <svg width="12" height="12" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+          <path d="M8,1 a7,7 0 1,0 0,14 a7,7 0 1,0 0,-14 z" fill="#000080"/>
+          <path d="M8,3 a5,5 0 1,0 0,10 a5,5 0 1,0 0,-10 z" fill="#ffff00"/>
+        </svg>
+        <span id="theme-text">Dark Mode</span>
+      </button>
+      <span style="font-size: 10px; font-weight: normal;">v0.4.0 (beta)</span>
+    </div>
+  </div>
+
+  <div class="promo-banner" role="status">
+    <div class="marquee-track">
+      <span>★ MiniCode v0.4.0 is now available ★ Download the free public beta today ★ No account required ★ Open to everyone ★</span>
+      <span>★ MiniCode v0.4.0 is now available ★ Download the free public beta today ★ No account required ★ Open to everyone ★</span>
+    </div>
+  </div>
+
+  <div class="main-content" id="scroll-container">
+    <div class="container">
+      
+      <div class="hero reveal active">
+        <svg class="hero-logo" viewBox="0 0 32 32" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="2" width="28" height="28" fill="#c0c0c0" />
+          <rect x="2" y="2" width="28" height="1" fill="#ffffff" />
+          <rect x="2" y="2" width="1" height="28" fill="#ffffff" />
+          <rect x="2" y="29" width="28" height="1" fill="#000000" />
+          <rect x="29" y="2" width="1" height="28" fill="#000000" />
+          <rect x="3" y="3" width="26" height="1" fill="#dfdfdf" />
+          <rect x="3" y="3" width="1" height="26" fill="#dfdfdf" />
+          <rect x="3" y="28" width="26" height="1" fill="#808080" />
+          <rect x="28" y="3" width="1" height="26" fill="#808080" />
+          <rect x="9" y="9" width="2" height="15" fill="#000000" />
+          <rect x="22" y="9" width="2" height="15" fill="#000000" />
+          <rect x="11" y="11" width="2" height="2" fill="#000000" />
+          <rect x="20" y="11" width="2" height="2" fill="#000000" />
+          <rect x="13" y="13" width="2" height="2" fill="#000000" />
+          <rect x="18" y="13" width="2" height="2" fill="#000000" />
+          <rect x="15" y="15" width="3" height="2" fill="#000000" />
+          <rect x="8" y="8" width="2" height="15" fill="#000080" />
+          <rect x="22" y="8" width="2" height="15" fill="#000080" />
+          <rect x="10" y="10" width="2" height="2" fill="#000080" />
+          <rect x="20" y="10" width="2" height="2" fill="#000080" />
+          <rect x="12" y="12" width="2" height="2" fill="#000080" />
+          <rect x="18" y="12" width="2" height="2" fill="#000080" />
+          <rect x="14" y="14" width="4" height="2" fill="#000080" />
+          <rect x="8" y="8" width="2" height="1" fill="#ffffff" />
+          <rect x="8" y="8" width="1" height="15" fill="#ffffff" />
+          <rect x="22" y="8" width="2" height="1" fill="#ffffff" />
+          <rect x="18" y="19" width="11" height="9" fill="#ff0000" />
+          <rect x="18" y="19" width="11" height="1" fill="#ff8080" />
+          <rect x="18" y="27" width="11" height="1" fill="#800000" />
+          <rect x="19" y="21" width="3" height="1" fill="#ffffff"/>
+          <rect x="19" y="22" width="1" height="1" fill="#ffffff"/>
+          <rect x="21" y="22" width="1" height="1" fill="#ffffff"/>
+          <rect x="19" y="23" width="3" height="1" fill="#ffffff"/>
+          <rect x="21" y="24" width="1" height="1" fill="#ffffff"/>
+          <rect x="19" y="25" width="3" height="1" fill="#ffffff"/>
+          <rect x="23" y="21" width="3" height="1" fill="#ffffff"/>
+          <rect x="23" y="22" width="1" height="1" fill="#ffffff"/>
+          <rect x="23" y="23" width="3" height="1" fill="#ffffff"/>
+          <rect x="25" y="24" width="1" height="1" fill="#ffffff"/>
+          <rect x="23" y="25" width="3" height="1" fill="#ffffff"/>
+        </svg>
+        <div class="badge-row">
+          <span class="badge badge-free"><span class="dot"></span>PUBLIC BETA IS LIVE</span>
+          <span class="badge">v0.4.0</span>
+          <span class="badge">LINUX</span>
+        </div>
+        <h1>MiniCode</h1>
+        <p class="tagline">Feels like 1995. Runs like 2026.</p>
+        <p class="sub">A blazing-fast, multi-language code editor with a classic, distraction-free interface.</p>
+        
+        <div class="download-group" id="download">
+          
+          <!-- UPDATED .DEB LINK -->
+          <a href="https://github.com/MiniCodeApp/minicode-95/releases/download/v0.4.0/minicode-95_0.4.0_amd64.deb" class="btn-download" download>
+            <span class="ribbon">MOST POPULAR</span>
+            <svg viewBox="0 0 32 32" shape-rendering="crispEdges" aria-hidden="true"><rect x="2" y="2" width="28" height="28" fill="#c0c0c0" /><rect x="2" y="2" width="28" height="1" fill="#ffffff" /><rect x="2" y="2" width="1" height="28" fill="#ffffff" /><rect x="2" y="29" width="28" height="1" fill="#000000" /><rect x="29" y="2" width="1" height="28" fill="#000000" /><rect x="3" y="3" width="26" height="1" fill="#dfdfdf" /><rect x="3" y="3" width="1" height="26" fill="#dfdfdf" /><rect x="3" y="28" width="26" height="1" fill="#808080" /><rect x="28" y="3" width="1" height="26" fill="#808080" /><rect x="9" y="9" width="2" height="15" fill="#000000" /><rect x="22" y="9" width="2" height="15" fill="#000000" /><rect x="11" y="11" width="2" height="2" fill="#000000" /><rect x="20" y="11" width="2" height="2" fill="#000000" /><rect x="13" y="13" width="2" height="2" fill="#000000" /><rect x="18" y="13" width="2" height="2" fill="#000000" /><rect x="15" y="15" width="3" height="2" fill="#000000" /><rect x="8" y="8" width="2" height="15" fill="#000080" /><rect x="22" y="8" width="2" height="15" fill="#000080" /><rect x="10" y="10" width="2" height="2" fill="#000080" /><rect x="20" y="10" width="2" height="2" fill="#000080" /><rect x="12" y="12" width="2" height="2" fill="#000080" /><rect x="18" y="12" width="2" height="2" fill="#000080" /><rect x="14" y="14" width="4" height="2" fill="#000080" /><rect x="8" y="8" width="2" height="1" fill="#ffffff" /><rect x="8" y="8" width="1" height="15" fill="#ffffff" /><rect x="22" y="8" width="2" height="1" fill="#ffffff" /><rect x="15" y="18" width="15" height="10" fill="#ff0000" /><rect x="15" y="18" width="15" height="1" fill="#ff8080" /><rect x="15" y="27" width="15" height="1" fill="#800000" /><text x="22.5" y="26" fill="#ffffff" font-family="Arial, sans-serif" font-size="7" font-weight="bold" text-anchor="middle">deb</text></svg>
+            Download .deb
+          </a>
+          
+          <!-- UPDATED APPIMAGE LINK -->
+          <a href="https://github.com/MiniCodeApp/minicode-95/releases/download/v0.4.0/MiniCode-0.4.0.AppImage" class="btn-download" download>
+            <svg viewBox="0 0 32 32" shape-rendering="crispEdges" aria-hidden="true"><rect x="2" y="2" width="28" height="28" fill="#c0c0c0" /><rect x="2" y="2" width="28" height="1" fill="#ffffff" /><rect x="2" y="2" width="1" height="28" fill="#ffffff" /><rect x="2" y="29" width="28" height="1" fill="#000000" /><rect x="29" y="2" width="1" height="28" fill="#000000" /><rect x="3" y="3" width="26" height="1" fill="#dfdfdf" /><rect x="3" y="3" width="1" height="26" fill="#dfdfdf" /><rect x="3" y="28" width="26" height="1" fill="#808080" /><rect x="28" y="3" width="1" height="26" fill="#808080" /><rect x="9" y="9" width="2" height="15" fill="#000000" /><rect x="22" y="9" width="2" height="15" fill="#000000" /><rect x="11" y="11" width="2" height="2" fill="#000000" /><rect x="20" y="11" width="2" height="2" fill="#000000" /><rect x="13" y="13" width="2" height="2" fill="#000000" /><rect x="18" y="13" width="2" height="2" fill="#000000" /><rect x="15" y="15" width="3" height="2" fill="#000000" /><rect x="8" y="8" width="2" height="15" fill="#000080" /><rect x="22" y="8" width="2" height="15" fill="#000080" /><rect x="10" y="10" width="2" height="2" fill="#000080" /><rect x="20" y="10" width="2" height="2" fill="#000080" /><rect x="12" y="12" width="2" height="2" fill="#000080" /><rect x="18" y="12" width="2" height="2" fill="#000080" /><rect x="14" y="14" width="4" height="2" fill="#000080" /><rect x="8" y="8" width="2" height="1" fill="#ffffff" /><rect x="8" y="8" width="1" height="15" fill="#ffffff" /><rect x="22" y="8" width="2" height="1" fill="#ffffff" /><rect x="15" y="18" width="15" height="10" fill="#ff0000" /><rect x="15" y="18" width="15" height="1" fill="#ff8080" /><rect x="15" y="27" width="15" height="1" fill="#800000" /><text x="22.5" y="26" fill="#ffffff" font-family="Arial, sans-serif" font-size="7" font-weight="bold" text-anchor="middle">img</text></svg>
+            Download AppImage
+          </a>
+          
+          <a href="#" class="btn-download locked"><span class="ribbon ribbon-soon"></span>Download .rpm</a>
+          <a href="#" class="btn-download locked"><span class="ribbon ribbon-soon"></span>Windows</a>
+        </div>
+        
+        <p class="microcopy">No account required. No credit card. Just download and start coding.</p>
+        <div class="trust-line"><span>No account</span><span>No credit card</span><span>No telemetry</span><span>~80 MB</span></div>
+      </div>
+
+      <div class="stats-row reveal">
+        <div class="stat"><span class="num">8</span><span class="lbl">Languages</span></div>
+        <div class="stat"><span class="num">AES-256</span><span class="lbl">Vault encryption</span></div>
+        <div class="stat"><span class="num">0</span><span class="lbl">Telemetry pings</span></div>
+        <div class="stat"><span class="num">100%</span><span class="lbl">Offline capable</span></div>
+      </div>
+
+      <div class="section-title reveal">Features</div>
+      <div class="feature-grid">
+        <div class="feature-card lang-card reveal delay-1">
+          <div class="code-snippet snippet-1">&lt;/&gt;</div>
+          <div class="code-snippet snippet-2">[ ]</div>
+          <div class="code-snippet snippet-3">{ }</div>
+          <div class="feature-icon"><svg viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M3,1 h7 l4,4 v10 h-11 z" fill="#FFFFFF" stroke="#000000" stroke-width="1"/><path d="M10,1 v4 h4" fill="#C0C0C0" stroke="#000000" stroke-width="1"/><rect x="5" y="8" width="2" height="2" fill="#000080"/><rect x="4" y="9" width="1" height="2" fill="#000080"/><rect x="5" y="11" width="2" height="2" fill="#000080"/><rect x="10" y="8" width="2" height="2" fill="#000080"/><rect x="12" y="9" width="1" height="2" fill="#000080"/><rect x="10" y="11" width="2" height="2" fill="#000080"/></svg></div>
+          <h3>Multi-Language Support</h3><p>Syntax highlighting for HTML, CSS, JS, TS, JSON, Python, C, and C++.</p>
+        </div>
+        <div class="feature-card vault-card reveal delay-2">
+          <div class="feature-icon"><svg viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M5,7 V4 Q5,1 8,1 Q11,1 11,4 V7" fill="none" stroke="#404040" stroke-width="2.2"/><path d="M5,7 V4 Q5,1 8,1 Q11,1 11,4 V7" fill="none" stroke="#909090" stroke-width="1.2"/><rect x="3" y="7" width="10" height="8" fill="#FFD700" stroke="#000000" stroke-width="1"/><rect x="4" y="8" width="8" height="1" fill="#FFEC80"/><rect x="4" y="13" width="8" height="1" fill="#B8860B"/><circle cx="8" cy="10.5" r="1.2" fill="#000000"/><rect x="7.5" y="10.5" width="1" height="3" fill="#000000"/></svg></div>
+          <h3>Military-Grade Vault</h3><p>Encrypt your entire workspace with AES-256-GCM. Nobody sees your files without the master password.</p>
+        </div>
+        <div class="feature-card split-card reveal delay-3">
+          <div class="split-overlay left"></div><div class="split-overlay right"></div>
+          <div class="feature-icon"><svg viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="2" y="3" width="12" height="10" fill="#FFFFFF" stroke="#000000" stroke-width="1"/><rect x="2" y="3" width="12" height="2" fill="#000080"/><rect x="7" y="5" width="1" height="8" fill="#000000"/></svg></div>
+          <h3>Split Panes &amp; Tabs</h3><p>Work with multiple files side-by-side. Drag tabs to create infinite split views.</p>
+        </div>
+        <div class="feature-card terminal-card reveal delay-1">
+          <div class="feature-icon"><svg viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="2" y="3" width="12" height="10" fill="#000000" stroke="#808080" stroke-width="1"/><rect x="4" y="6" width="2" height="1" fill="#FFFFFF"/><rect x="6" y="7" width="1" height="1" fill="#FFFFFF"/><rect x="5" y="8" width="1" height="1" fill="#FFFFFF"/><rect x="4" y="9" width="2" height="1" fill="#FFFFFF"/><rect x="9" y="9" width="3" height="1" fill="#FFFFFF"/></svg></div>
+          <h3>Real Terminal</h3><p>Built-in node-pty terminal. Run git, npm, or any shell command without leaving your editor.</p>
+        </div>
+        <div class="feature-card feather-card reveal delay-2">
+          <div class="heavy-block"></div><svg class="feather-icon" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M12,2 Q12,6 8,10 L4,14 L6,14 L9,11 Q13,7 13,3 Z" fill="#FFD700" stroke="#000000" stroke-width="1"/></svg>
+          <div class="feature-icon"><svg viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M9,1 L4,9 h3 l-1,6 l6,-8 h-3 z" fill="#FFD700" stroke="#000000" stroke-width="0.7"/></svg></div>
+          <h3>Featherweight</h3><p>Launches in under a second and idles around 90 MB of RAM. It runs happily on an old ThinkPad.</p>
+        </div>
+        <div class="feature-card private-card reveal delay-3">
+          <div class="hacker-hook"></div><div class="shield-effect"></div>
+          <div class="feature-icon"><svg viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M8,1 L14,3.5 v4.5 c0,4 -6,7 -6,7 c0,0 -6,-3 -6,-7 V3.5 z" fill="#C0C0C0" stroke="#000000" stroke-width="1"/><path d="M5,8 l2,2 l4,-4" fill="none" stroke="#008000" stroke-width="1.6"/></svg></div>
+          <h3>Private By Design</h3><p>Zero telemetry, zero account, zero network calls. Your code never leaves your machine.</p>
+        </div>
+      </div>
+
+      <div class="section-title reveal">Gallery</div>
+      <div class="screenshot-gallery">
+        <div class="screenshot-box main-shot reveal">
+          <img src="main-light.png" alt="Split Panes" class="img-light"><img src="main-dark.png" alt="Split Panes" class="img-dark">
+          <div class="screenshot-caption">Split Panes, Multi-Language &amp; Real Terminal</div>
+        </div>
+        <div class="screenshot-row">
+          <div class="screenshot-box reveal delay-1">
+            <img src="lock-light.png" alt="Vault" class="img-light"><img src="lock-dark.png" alt="Vault" class="img-dark">
+            <div class="screenshot-caption">Military-Grade Vault</div>
+          </div>
+          <div class="screenshot-box reveal delay-2">
+            <img src="html-light.png" alt="HTML Editing" class="img-light"><img src="html-dark.png" alt="HTML Editing" class="img-dark">
+            <div class="screenshot-caption">Editing HTML &amp; CSS</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title reveal">Questions</div>
+      <div class="reveal">
+        <details class="faq-item"><summary>Is MiniCode free to use?</summary><div class="faq-body">Yes — currently, there is no trial timer, no feature locks, no watermark, and no account required.</div></details>
+        <details class="faq-item"><summary>Will my files ever be locked behind a paywall?</summary><div class="faq-body">Never. Your source files live on your disk as ordinary files. You have complete ownership of your code.</div></details>
+      </div>
+
+      <div class="final-cta reveal">
+        <h2>Start coding in MiniCode today.</h2>
+        <p>It takes about twelve seconds to download and install.<br>Experience a distraction-free, lightning-fast editor.</p>
+        <div class="download-group" style="margin-bottom: 16px;">
+          <a href="#download" class="btn-download btn-primary-cta">
+            <svg viewBox="0 0 16 16" shape-rendering="crispEdges" width="24" height="24"><rect x="1" y="1" width="14" height="14" fill="#c0c0c0" stroke="#000000" stroke-width="1"/><rect x="7" y="3" width="2" height="5" fill="#000080"/><rect x="5" y="7" width="2" height="1" fill="#000080"/><rect x="9" y="7" width="2" height="1" fill="#000080"/><rect x="6" y="8" width="4" height="1" fill="#000080"/><rect x="7" y="9" width="2" height="1" fill="#000080"/><rect x="4" y="12" width="8" height="2" fill="#000080"/></svg>
+            Get MiniCode
+          </a>
+        </div>
+        <p style="font-size: 11px; color: #555; margin: 0;">Linux · x86_64 · ~80 MB · No signup required</p>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-panel">Ready</div><div class="status-panel">Secure</div>
+    <div class="status-panel flex-grow">MiniCode 0.4.0 — public beta</div>
+    <div class="status-panel">UTF-8</div><div class="status-panel">v0.4.0</div>
+  </div>
+
+  <div id="lightbox" class="lightbox"><span class="lightbox-close">&times;</span><img class="lightbox-content" id="lightbox-img"></div>
+
+  <script>
+    // Dark Mode
+    const toggleBtn = document.getElementById('theme-toggle');
+    const themeText = document.getElementById('theme-text');
+    const root = document.documentElement;
+    const savedTheme = localStorage.getItem('minicode-theme');
+    if (savedTheme === 'dark') { root.setAttribute('data-theme', 'dark'); themeText.textContent = 'Light Mode'; }
+    toggleBtn.addEventListener('click', () => {
+      if (root.getAttribute('data-theme') === 'dark') { root.removeAttribute('data-theme'); themeText.textContent = 'Dark Mode'; localStorage.setItem('minicode-theme', 'light'); } 
+      else { root.setAttribute('data-theme', 'dark'); themeText.textContent = 'Light Mode'; localStorage.setItem('minicode-theme', 'dark'); }
+    });
+
+    // Lightbox
+    const lightbox = document.getElementById('lightbox');
+    const lightboxImg = document.getElementById('lightbox-img');
+    document.querySelectorAll('.screenshot-box img').forEach(img => {
+      img.addEventListener('click', function() {
+        if (window.getComputedStyle(this).display !== 'none') { lightbox.style.display = 'block'; lightboxImg.src = this.src; }
+      });
+    });
+    document.querySelector('.lightbox-close').addEventListener('click', () => { lightbox.style.display = 'none'; });
+    lightbox.addEventListener('click', (e) => { if (e.target === lightbox) lightbox.style.display = 'none'; });
+
+    // Scroll Animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('active');
+          if (entry.target.classList.contains('feature-card')) {
+             entry.target.classList.remove('active'); void entry.target.offsetWidth; entry.target.classList.add('active');
+          }
+        }
+      });
+    }, { root: document.getElementById('scroll-container'), threshold: 0.15 });
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    // Generate Floating Background Symbols
+    const bgContainer = document.querySelector('.bg-container');
+    const symbols = ['<', '>', '{', '}', '[', ']', '0', '1', '/', '*', '=', ';'];
+    for (let i = 0; i < 25; i++) {
+      const el = document.createElement('div');
+      el.classList.add('floating-symbol');
+      el.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+      el.style.left = `${Math.random() * 100}vw`;
+      el.style.animationDuration = `${15 + Math.random() * 20}s`;
+      el.style.animationDelay = `-${Math.random() * 20}s`;
+      el.style.fontSize = `${12 + Math.random() * 24}px`;
+      bgContainer.appendChild(el);
+    }
+  </script>
+
+</body>
+</html>
